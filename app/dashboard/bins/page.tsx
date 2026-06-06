@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, MapPin, Package, X, Check, AlertCircle, QrCode, Copy, Printer } from "lucide-react";
+import { Plus, Trash2, MapPin, Package, X, Check, AlertCircle, QrCode, Copy, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { getTrashBins, addTrashBin } from "@/services/pickup.service";
 import { TrashBin } from "@/types/pickup";
 import { format } from "date-fns";
@@ -14,116 +14,14 @@ export default function BinsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
-  const [selectedBinForQr, setSelectedBinForQr] = useState<TrashBin | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [form, setForm] = useState({ location: "", address: "", capacity: 120 });
 
-  const handlePrintQr = (bin: TrashBin) => {
-    if (typeof window === "undefined") return;
-    const binLink = `${window.location.origin}/pickup?binId=${bin.id}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(binLink)}`;
-    
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Cetak QR Code - ${bin.location}</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              text-align: center;
-              background-color: #ffffff;
-            }
-            .container {
-              border: 3px solid #10b981;
-              padding: 40px;
-              border-radius: 24px;
-              box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-              max-width: 450px;
-            }
-            .logo {
-              font-size: 26px;
-              font-weight: 800;
-              color: #10b981;
-              margin-bottom: 5px;
-              letter-spacing: -0.025em;
-            }
-            .sublogo {
-              font-size: 11px;
-              color: #6b7280;
-              margin-bottom: 25px;
-              text-transform: uppercase;
-              letter-spacing: 0.15em;
-              font-weight: 600;
-            }
-            .qr-box {
-              background: white;
-              padding: 15px;
-              border-radius: 16px;
-              border: 1px solid #e5e7eb;
-              display: inline-block;
-              margin-bottom: 25px;
-            }
-            .location {
-              font-size: 24px;
-              font-weight: 800;
-              color: #1f2937;
-              margin: 0 0 10px 0;
-            }
-            .address {
-              font-size: 14px;
-              color: #4b5563;
-              margin: 0 0 25px 0;
-              line-height: 1.5;
-            }
-            .footer-text {
-              font-size: 11px;
-              color: #9ca3af;
-              border-top: 1px dashed #e5e7eb;
-              padding-top: 15px;
-              font-weight: 500;
-              letter-spacing: 0.05em;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="logo">TrashSync</div>
-            <div class="sublogo">Smart Trash Management</div>
-            <div class="qr-box">
-              <img src="${qrUrl}" alt="QR Code" width="250" height="250" />
-            </div>
-            <div class="location">${bin.location}</div>
-            <div class="address">${bin.address}</div>
-            <div class="footer-text">PINDAI QR CODE INI UNTUK ABSENSI PENGAMBILAN SAMPAH INSTAN</div>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
-  const handleCopyLink = (binId: string) => {
-    if (typeof window === "undefined") return;
-    const binLink = `${window.location.origin}/pickup?binId=${binId}`;
-    navigator.clipboard.writeText(binLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyCode = (binId: string, code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedId(binId);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const load = async () => {
@@ -153,7 +51,7 @@ export default function BinsPage() {
       setForm({ location: "", address: "", capacity: 120 });
       await load();
       setTimeout(() => { setSuccess(false); setShowForm(false); }, 1500);
-    } catch (err) {
+    } catch {
       setError("Gagal menambahkan bin. Coba lagi.");
     } finally {
       setSubmitting(false);
@@ -168,9 +66,22 @@ export default function BinsPage() {
           <h1 className="font-display font-bold text-2xl" style={{ color: "var(--text-primary)" }}>Kelola Bin</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>{bins.length} bin terdaftar</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary">
-          <Plus size={16} /> Tambah Bin
-        </button>
+        <div className="flex gap-2">
+          <button onClick={load} className="btn-ghost"><RefreshCw size={15} /></button>
+          <button onClick={() => setShowForm(true)} className="btn-primary">
+            <Plus size={16} /> Tambah Bin
+          </button>
+        </div>
+      </div>
+
+      {/* Info callout */}
+      <div className="p-3 rounded-xl text-sm flex items-start gap-2.5"
+        style={{ background: "var(--brand-dim)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}>
+        <QrCode size={15} className="mt-0.5 flex-shrink-0" style={{ color: "var(--brand)" }} />
+        <span>
+          Setiap bin memiliki <strong style={{ color: "var(--brand)" }}>Kode Lokasi</strong> unik yang di-generate otomatis saat ditambahkan.
+          Konfigurasikan kode ini pada perangkat scanner Python di tiap bin.
+        </span>
       </div>
 
       {/* Add Form Modal */}
@@ -180,9 +91,7 @@ export default function BinsPage() {
           <div className="relative glass-card w-full max-w-md p-6 animate-enter">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-display font-semibold" style={{ color: "var(--text-primary)" }}>Tambah Bin Baru</h2>
-              <button onClick={() => setShowForm(false)} className="btn-ghost p-1.5">
-                <X size={16} />
-              </button>
+              <button onClick={() => setShowForm(false)} className="btn-ghost p-1.5"><X size={16} /></button>
             </div>
 
             {error && (
@@ -191,7 +100,6 @@ export default function BinsPage() {
                 <AlertCircle size={14} /> {error}
               </div>
             )}
-
             {success && (
               <div className="flex items-center gap-2 p-3 rounded-lg mb-4 text-sm"
                 style={{ background: "var(--brand-dim)", border: "1px solid var(--border-strong)", color: "var(--brand)" }}>
@@ -215,10 +123,11 @@ export default function BinsPage() {
                 <input type="number" className="input-base" min={10} max={1000} value={form.capacity}
                   onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })} />
               </div>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Kode lokasi unik akan di-generate otomatis dan ditampilkan setelah bin disimpan.
+              </p>
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1 justify-center">
-                  Batal
-                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1 justify-center">Batal</button>
                 <button type="submit" className="btn-primary flex-1 justify-center" disabled={submitting}>
                   {submitting ? "Menyimpan..." : "Simpan"}
                 </button>
@@ -231,7 +140,7 @@ export default function BinsPage() {
       {/* Bins Grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="stat-card">
               <div className="skeleton w-10 h-10 rounded-lg mb-3" />
               <div className="skeleton w-3/4 h-4 mb-2" />
@@ -248,29 +157,40 @@ export default function BinsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {bins.map((bin, i) => (
-            <div key={bin.id} className="stat-card group"
-              style={{ animationDelay: `${i * 0.05}s` }}>
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "var(--brand-dim)", border: "1px solid var(--border-strong)" }}>
-                  <Trash2 size={18} style={{ color: "var(--brand)" }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-display font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                    {bin.location}
+            <div key={bin.id} className="stat-card group" style={{ animationDelay: `${i * 0.05}s` }}>
+              {/* Online/Offline badge */}
+              {(() => {
+                const now = Date.now();
+                const lastSeen = bin.lastSeenAt ? new Date(bin.lastSeenAt).getTime() : null;
+                const diffMin = lastSeen ? Math.floor((now - lastSeen) / 60000) : null;
+                let scannerBadge;
+                if (!lastSeen) {
+                  scannerBadge = null;
+                } else if (diffMin! < 3) {
+                  scannerBadge = <span className="badge badge-completed flex items-center gap-1" style={{ fontSize: "0.65rem" }}><Wifi size={10} /> Online</span>;
+                } else if (diffMin! < 30) {
+                  scannerBadge = <span className="badge badge-pending flex items-center gap-1" style={{ fontSize: "0.65rem" }}><Wifi size={10} /> Lambat ({diffMin}m)</span>;
+                } else {
+                  scannerBadge = <span className="badge badge-expired flex items-center gap-1" style={{ fontSize: "0.65rem" }}><WifiOff size={10} /> Offline ({diffMin}m)</span>;
+                }
+                return (
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: "var(--brand-dim)", border: "1px solid var(--border-strong)" }}>
+                      <Trash2 size={18} style={{ color: "var(--brand)" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-display font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+                        {bin.location}
+                      </div>
+                      <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                        <span className="badge badge-completed" style={{ fontSize: "0.7rem" }}>Aktif</span>
+                        {scannerBadge}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="badge badge-completed" style={{ fontSize: "0.7rem" }}>Aktif</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedBinForQr(bin)}
-                  className="p-1.5 rounded-lg btn-ghost flex-shrink-0 self-start text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all duration-200"
-                  title="Tampilkan QR Code Bin"
-                >
-                  <QrCode size={16} />
-                </button>
-              </div>
+                );
+              })()}
 
               <div className="space-y-2 text-sm">
                 <div className="flex items-start gap-2" style={{ color: "var(--text-muted)" }}>
@@ -281,6 +201,24 @@ export default function BinsPage() {
                   <Package size={13} />
                   <span>Kapasitas: {bin.capacity} Liter</span>
                 </div>
+
+                {/* Bin code display */}
+                <div className="flex items-center justify-between gap-2 mt-3 p-2 rounded-lg"
+                  style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-2">
+                    <QrCode size={13} style={{ color: "var(--brand)" }} />
+                    <span className="font-mono text-xs font-bold" style={{ color: "var(--brand)" }}>
+                      {bin.code}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleCopyCode(bin.id, bin.code)}
+                    className="btn-ghost p-0.5"
+                    title="Salin kode"
+                    style={{ fontSize: "0.7rem" }}>
+                    {copiedId === bin.id ? <Check size={13} style={{ color: "var(--brand)" }} /> : <Copy size={13} />}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 pt-3 border-t text-xs" style={{ borderColor: "var(--border)", color: "var(--text-ghost)" }}>
@@ -290,67 +228,6 @@ export default function BinsPage() {
           ))}
         </div>
       )}
-
-      {/* STATIC QR CODE PREMIUM MODAL */}
-      {selectedBinForQr && (() => {
-        const binLink = typeof window !== "undefined" ? `${window.location.origin}/pickup?binId=${selectedBinForQr.id}` : "";
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(binLink)}`;
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setSelectedBinForQr(null); setCopied(false); }} />
-            <div className="relative glass-card w-full max-w-md p-6 animate-enter">
-              <div className="flex items-center justify-between mb-5 border-b pb-3" style={{ borderColor: "var(--border)" }}>
-                <div className="flex items-center gap-2">
-                  <QrCode size={18} style={{ color: "var(--brand)" }} />
-                  <h3 className="font-display font-semibold text-lg" style={{ color: "var(--text-primary)" }}>
-                    QR Code Lokasi Bin
-                  </h3>
-                </div>
-                <button onClick={() => { setSelectedBinForQr(null); setCopied(false); }} className="btn-ghost p-1.5">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex flex-col items-center text-center space-y-5 py-2">
-                <div className="p-3 bg-white rounded-2xl shadow-xl border border-zinc-200">
-                  <img src={qrUrl} alt="QR Code Lokasi" width={180} height={180} className="rounded" />
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="font-display font-semibold text-base" style={{ color: "var(--text-primary)" }}>
-                    {selectedBinForQr.location}
-                  </h4>
-                  <p className="text-xs px-2" style={{ color: "var(--text-muted)" }}>
-                    {selectedBinForQr.address}
-                  </p>
-                </div>
-
-                {/* Copy link box */}
-                <div className="w-full p-2.5 rounded-xl bg-black/25 border flex items-center justify-between gap-3" style={{ borderColor: "var(--border)" }}>
-                  <span className="font-mono text-xs truncate flex-1 text-left" style={{ color: "var(--text-muted)" }}>
-                    {binLink}
-                  </span>
-                  <button onClick={() => handleCopyLink(selectedBinForQr.id)} className="btn-primary py-1 px-3 text-xs flex-shrink-0"
-                    style={{ background: copied ? "var(--brand-dim)" : "var(--brand)", color: copied ? "var(--brand)" : "#052e16" }}>
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                    {copied ? "Disalin!" : "Salin Link"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 mt-2 border-t" style={{ borderColor: "var(--border)" }}>
-                <button onClick={() => handlePrintQr(selectedBinForQr)} className="btn-primary flex-1 justify-center py-2.5">
-                  <Printer size={15} /> Cetak QR Code
-                </button>
-                <button onClick={() => { setSelectedBinForQr(null); setCopied(false); }} className="btn-secondary flex-1 justify-center py-2.5">
-                  Tutup
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }

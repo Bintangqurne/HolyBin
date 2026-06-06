@@ -1,40 +1,25 @@
 // lib/generateCode.ts
+const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // exclude confusing chars: I, O, 0, 1
 
-/**
- * Generates a unique pickup code in format: TRH-XXXX-XXXX
- * Easy to read and type for officers in the field
- */
-export function generateUniqueCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Exclude confusing chars: I, O, 0, 1
-  let part = "";
-
-  for (let i = 0; i < 4; i++) {
-    part += chars[Math.floor(Math.random() * chars.length)];
+function randomSegment(length: number): string {
+  let s = "";
+  for (let i = 0; i < length; i++) {
+    s += CHARS[Math.floor(Math.random() * CHARS.length)];
   }
-
-  return `TRH-${part}`;
+  return s;
 }
 
-/**
- * Check if a code has expired (default: 24 hours)
- */
-export function isCodeExpired(expiresAt: Date | string): boolean {
-  const expiry = new Date(expiresAt);
-  return new Date() > expiry;
+/** Permanent bin location identifier, e.g. "B-7K2A" */
+export function generateBinCode(): string {
+  return `B-${randomSegment(4)}`;
 }
 
-/**
- * Get expiry date (hours from now)
- */
-export function getExpiryDate(hoursFromNow: number = 24): Date {
-  const date = new Date();
-  date.setHours(date.getHours() + hoursFromNow);
-  return date;
+/** Personal officer QR code, e.g. "U-9M3X" */
+export function generateUserCode(): string {
+  return `U-${randomSegment(4)}`;
 }
 
-/**
- * Format code for display
- */
+/** Format code for display */
 export function formatCode(code: string): string {
   return code.toUpperCase().replace(/\s/g, "");
 }

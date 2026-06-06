@@ -2,26 +2,25 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  History, Search, RefreshCw, Download, User, MapPin,
-  Clock, Weight, FileText, ChevronDown, ChevronUp, Filter
+  History, Search, RefreshCw, Download,
+  MapPin, Clock, ChevronDown, ChevronUp
 } from "lucide-react";
-import { getPickupHistory } from "@/services/pickup.service";
-import { PickupRecord } from "@/types/pickup";
+import { getAttendanceHistory } from "@/services/attendance.service";
+import { Attendance } from "@/types/attendance";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
 export default function HistoryPage() {
-  const [records, setRecords] = useState<PickupRecord[]>([]);
+  const [records, setRecords] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<"pickedUpAt" | "officerName" | "binLocation">("pickedUpAt");
+  const [sortField, setSortField] = useState<"scannedAt" | "userName" | "binLocation">("scannedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await getPickupHistory(100);
+      const data = await getAttendanceHistory(100);
       setRecords(data);
     } catch (err) {
       console.error(err);
@@ -38,17 +37,21 @@ export default function HistoryPage() {
       const q = search.toLowerCase();
       data = data.filter(
         (r) =>
-          r.officerName.toLowerCase().includes(q) ||
+          r.userName.toLowerCase().includes(q) ||
           r.binLocation.toLowerCase().includes(q) ||
-          r.code.toLowerCase().includes(q)
+          r.userCode.toLowerCase().includes(q) ||
+          r.binCode.toLowerCase().includes(q)
       );
     }
     data.sort((a, b) => {
-      let aVal = a[sortField] as string;
-      let bVal = b[sortField] as string;
-      if (sortField === "pickedUpAt") {
-        aVal = new Date(a.pickedUpAt).toISOString();
-        bVal = new Date(b.pickedUpAt).toISOString();
+      let aVal: string;
+      let bVal: string;
+      if (sortField === "scannedAt") {
+        aVal = new Date(a.scannedAt).toISOString();
+        bVal = new Date(b.scannedAt).toISOString();
+      } else {
+        aVal = a[sortField];
+        bVal = b[sortField];
       }
       if (sortDir === "asc") return aVal > bVal ? 1 : -1;
       return aVal < bVal ? 1 : -1;
@@ -72,15 +75,13 @@ export default function HistoryPage() {
 
   const exportCSV = () => {
     const rows = [
-      ["Kode", "Petugas", "Telepon", "Lokasi Bin", "Berat (kg)", "Catatan", "Waktu Pengambilan"],
+      ["Petugas", "Kode User", "Lokasi Bin", "Kode Bin", "Waktu Scan"],
       ...filtered.map((r) => [
-        r.code,
-        r.officerName,
-        r.officerPhone || "-",
+        r.userName,
+        r.userCode,
         r.binLocation,
-        r.weight ?? "-",
-        r.notes || "-",
-        format(new Date(r.pickedUpAt), "yyyy-MM-dd HH:mm"),
+        r.binCode,
+        format(new Date(r.scannedAt), "yyyy-MM-dd HH:mm"),
       ]),
     ];
     const csv = rows.map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
@@ -88,7 +89,7 @@ export default function HistoryPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `riwayat-pengambilan-${format(new Date(), "yyyyMMdd")}.csv`;
+    a.download = `riwayat-absensi-${format(new Date(), "yyyyMMdd")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -99,16 +100,14 @@ export default function HistoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="font-display font-bold text-2xl" style={{ color: "var(--text-primary)" }}>
-            Riwayat Pengambilan
+            Riwayat Absensi
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
             {filtered.length} dari {records.length} record
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={load} className="btn-ghost">
-            <RefreshCw size={15} />
-          </button>
+          <button onClick={load} className="btn-ghost"><RefreshCw size={15} /></button>
           <button onClick={exportCSV} className="btn-secondary" disabled={filtered.length === 0}>
             <Download size={15} />
             Export CSV
@@ -122,7 +121,7 @@ export default function HistoryPage() {
           style={{ color: "var(--text-muted)" }} />
         <input
           className="input-base pl-9"
-          placeholder="Cari kode, petugas, atau lokasi..."
+          placeholder="Cari petugas, lokasi, atau kode..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -144,7 +143,7 @@ export default function HistoryPage() {
           <div className="p-16 text-center">
             <History size={36} className="mx-auto mb-3 opacity-20" style={{ color: "var(--brand)" }} />
             <p className="font-medium" style={{ color: "var(--text-secondary)" }}>
-              {search ? "Tidak ada hasil yang cocok" : "Belum ada riwayat pengambilan"}
+              {search ? "Tidak ada hasil yang cocok" : "Belum ada riwayat absensi"}
             </p>
           </div>
         ) : (
@@ -153,100 +152,65 @@ export default function HistoryPage() {
               <thead>
                 <tr>
                   <th>
-                    <button onClick={() => handleSort("pickedUpAt")}
-                      className="flex items-center gap-1" style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
-                      Waktu <SortIcon field="pickedUpAt" />
+                    <button onClick={() => handleSort("scannedAt")}
+                      className="flex items-center gap-1"
+                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
+                      Waktu <SortIcon field="scannedAt" />
                     </button>
                   </th>
-                  <th>Kode</th>
                   <th>
-                    <button onClick={() => handleSort("officerName")}
-                      className="flex items-center gap-1" style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
-                      Petugas <SortIcon field="officerName" />
+                    <button onClick={() => handleSort("userName")}
+                      className="flex items-center gap-1"
+                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
+                      Petugas <SortIcon field="userName" />
                     </button>
                   </th>
                   <th>
                     <button onClick={() => handleSort("binLocation")}
-                      className="flex items-center gap-1" style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
+                      className="flex items-center gap-1"
+                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}>
                       Lokasi <SortIcon field="binLocation" />
                     </button>
                   </th>
-                  <th>Berat</th>
-                  <th style={{ width: "40px" }} />
+                  <th>Kode Bin</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <>
-                    <tr key={r.id} style={{ cursor: "pointer" }}
-                      onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
-                      <td>
-                        <div className="text-sm" style={{ color: "var(--text-primary)" }}>
-                          {format(new Date(r.pickedUpAt), "d MMM yyyy", { locale: idLocale })}
+                  <tr key={r.id}>
+                    <td>
+                      <div className="text-sm" style={{ color: "var(--text-primary)" }}>
+                        {format(new Date(r.scannedAt), "d MMM yyyy", { locale: idLocale })}
+                      </div>
+                      <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                        <Clock size={10} />
+                        {format(new Date(r.scannedAt), "HH:mm")}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                          style={{ background: "var(--brand-dim)", color: "var(--brand)", border: "1px solid var(--border)" }}>
+                          {r.userName.charAt(0).toUpperCase()}
                         </div>
-                        <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                          {format(new Date(r.pickedUpAt), "HH:mm")}
+                        <div>
+                          <div className="text-sm" style={{ color: "var(--text-primary)" }}>{r.userName}</div>
+                          <div className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{r.userCode}</div>
                         </div>
-                      </td>
-                      <td>
-                        <span className="font-mono text-sm" style={{ color: "var(--brand)", letterSpacing: "0.05em" }}>
-                          {r.code}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                            style={{ background: "var(--brand-dim)", color: "var(--brand)", border: "1px solid var(--border)" }}>
-                            {r.officerName.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-sm" style={{ color: "var(--text-primary)" }}>{r.officerName}</div>
-                            {r.officerPhone && (
-                              <div className="text-xs" style={{ color: "var(--text-muted)" }}>{r.officerPhone}</div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-1.5 text-sm" style={{ color: "var(--text-secondary)" }}>
-                          <MapPin size={12} />
-                          {r.binLocation}
-                        </div>
-                      </td>
-                      <td>
-                        <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                          {r.weight ? `${r.weight} kg` : "—"}
-                        </span>
-                      </td>
-                      <td>
-                        <ChevronDown size={14} style={{
-                          color: "var(--text-muted)",
-                          transform: expanded === r.id ? "rotate(180deg)" : "none",
-                          transition: "transform 0.2s"
-                        }} />
-                      </td>
-                    </tr>
-                    {expanded === r.id && (
-                      <tr key={`${r.id}-detail`}>
-                        <td colSpan={6} style={{ padding: 0 }}>
-                          <div className="px-4 py-3 animate-enter" style={{ background: "var(--bg-elevated)", borderTop: "1px solid var(--border)" }}>
-                            <div className="flex flex-wrap gap-4 text-sm">
-                              <div className="flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
-                                <Clock size={13} />
-                                <span>ID Kode: <span style={{ color: "var(--text-secondary)" }}>{r.codeId}</span></span>
-                              </div>
-                              {r.notes && (
-                                <div className="flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
-                                  <FileText size={13} />
-                                  <span>Catatan: <span style={{ color: "var(--text-secondary)" }}>{r.notes}</span></span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        <MapPin size={12} />
+                        {r.binLocation}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="font-mono text-sm" style={{ color: "var(--brand)", letterSpacing: "0.05em" }}>
+                        {r.binCode}
+                      </span>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>

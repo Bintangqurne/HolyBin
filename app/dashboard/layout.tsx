@@ -5,15 +5,17 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard, History, Trash2, LogOut, Menu, X,
-  Settings, ChevronRight, Bell
+  ChevronRight, Users, BarChart3
 } from "lucide-react";
 import { onAuthChange, logoutAdmin, getAdminProfile } from "@/services/auth.service";
 import { AdminUser } from "@/types/user";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/users", label: "Petugas", icon: Users },
   { href: "/dashboard/bins", label: "Kelola Bin", icon: Trash2 },
-  { href: "/history", label: "Riwayat", icon: History },
+  { href: "/history", label: "Riwayat Absensi", icon: History },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

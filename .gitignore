@@ -41,3 +41,25 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Python (scanner & holybin)
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Scanner runtime (jangan commit state lokal)
+scanner/queue.db
+scanner/snapshots/
+
+# Holybin (file lokal/editor)
+holybin/.micropico
+holybin/holybin.code-workspace
+holybin/:main.py
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Claude local config
+.claude/

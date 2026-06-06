@@ -273,3 +273,11 @@ body {
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-secondary); }
 .nav-item.active { background: var(--brand-dim); color: var(--brand); border: 1px solid rgba(34,197,94,0.2); }
+
+@media print {
+  aside, header, button, .btn-primary, .btn-secondary, .btn-ghost { display: none !important; }
+  .lg\:ml-60 { margin-left: 0 !important; }
+  main { padding: 0 !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .glass-card, .stat-card { border: 1px solid #e5e7eb !important; box-shadow: none !important; background: #fff !important; break-inside: avoid; }
+}

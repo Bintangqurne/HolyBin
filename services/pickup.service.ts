@@ -1,4 +1,4 @@
-// services/pickup.service.ts
+// services/pickup.service.ts — bin management only
 import {
   collection,
   addDoc,
@@ -7,241 +7,20 @@ import {
   doc,
   query,
   where,
-  orderBy,
-  updateDoc,
   serverTimestamp,
   Timestamp,
   limit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { UniqueCode, PickupRecord, TrashBin } from "@/types/pickup";
-import { generateUniqueCode, getExpiryDate } from "@/lib/generateCode";
-
-// ──────────────────────────────────────────────
-// CODES
-// ──────────────────────────────────────────────
-
-export async function generateCode(
-  binId: string,
-  binLocation: string,
-  hoursValid: number = 24
-): Promise<UniqueCode> {
-  const code = generateUniqueCode();
-  const expiresAt = getExpiryDate(hoursValid);
-
-  const docRef = await addDoc(collection(db, "codes"), {
-    code,
-    binId,
-    binLocation,
-    generatedAt: serverTimestamp(),
-    expiresAt: Timestamp.fromDate(expiresAt),
-    status: "pending",
-  });
-
-  return {
-    id: docRef.id,
-    code,
-    binId,
-    binLocation,
-    generatedAt: new Date().toISOString(),
-    expiresAt: expiresAt.toISOString(),
-    status: "pending",
-  };
-}
-
-export async function verifyCode(
-  inputCode: string
-): Promise<{ valid: boolean; codeData?: UniqueCode; error?: string }> {
-  const normalized = inputCode.toUpperCase().trim();
-
-  const q = query(
-    collection(db, "codes"),
-    where("code", "==", normalized),
-    where("status", "==", "pending"),
-    limit(1)
-  );
-
-  const snapshot = await getDocs(q);
-
-  if (snapshot.empty) {
-    return { valid: false, error: "Kode tidak ditemukan atau sudah digunakan." };
-  }
-
-  const codeDoc = snapshot.docs[0];
-  const data = codeDoc.data();
-
-  // Check expiry
-  const expiresAt =
-    data.expiresAt instanceof Timestamp
-      ? data.expiresAt.toDate()
-      : new Date(data.expiresAt);
-
-  if (new Date() > expiresAt) {
-    // Mark as expired
-    await updateDoc(doc(db, "codes", codeDoc.id), { status: "expired" });
-    return { valid: false, error: "Kode sudah kadaluarsa." };
-  }
-
-  return {
-    valid: true,
-    codeData: {
-      id: codeDoc.id,
-      ...data,
-      generatedAt:
-        data.generatedAt instanceof Timestamp
-          ? data.generatedAt.toDate().toISOString()
-          : data.generatedAt,
-      expiresAt: expiresAt.toISOString(),
-    } as UniqueCode,
-  };
-}
-
-export async function getLatestActiveCodeForBin(
-  binId: string
-): Promise<UniqueCode | null> {
-  const q = query(
-    collection(db, "codes"),
-    where("binId", "==", binId),
-    where("status", "==", "pending"),
-    limit(1)
-  );
-
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) {
-    return null;
-  }
-
-  const codeDoc = snapshot.docs[0];
-  const data = codeDoc.data();
-
-  // Check expiry
-  const expiresAt =
-    data.expiresAt instanceof Timestamp
-      ? data.expiresAt.toDate()
-      : new Date(data.expiresAt);
-
-  if (new Date() > expiresAt) {
-    // Mark as expired
-    await updateDoc(doc(db, "codes", codeDoc.id), { status: "expired" });
-    return null;
-  }
-
-  return {
-    id: codeDoc.id,
-    ...data,
-    generatedAt:
-      data.generatedAt instanceof Timestamp
-        ? data.generatedAt.toDate().toISOString()
-        : data.generatedAt,
-    expiresAt: expiresAt.toISOString(),
-  } as UniqueCode;
-}
-
-export async function confirmPickup(
-  codeId: string,
-  officerName: string,
-  officerPhone: string,
-  binId: string,
-  binLocation: string,
-  code: string,
-  notes?: string,
-  weight?: number
-): Promise<PickupRecord> {
-  const now = new Date();
-
-  // Mark code as completed (only if it is a real unique code, not a static QR scan)
-  if (codeId && codeId !== "STATIC_QR") {
-    await updateDoc(doc(db, "codes", codeId), {
-      status: "completed",
-      usedBy: officerName,
-      usedAt: serverTimestamp(),
-    });
-  }
-
-  // Create pickup record
-  const recordRef = await addDoc(collection(db, "pickups"), {
-    codeId: codeId || "STATIC_QR",
-    code: code || "QR-SCAN",
-    binId,
-    binLocation,
-    officerName,
-    officerPhone,
-    pickedUpAt: serverTimestamp(),
-    notes: notes || "",
-    weight: weight || null,
-  });
-
-  return {
-    id: recordRef.id,
-    codeId: codeId || "STATIC_QR",
-    code: code || "QR-SCAN",
-    binId,
-    binLocation,
-    officerName,
-    officerPhone,
-    pickedUpAt: now.toISOString(),
-    notes,
-    weight,
-  };
-}
-
-// ──────────────────────────────────────────────
-// HISTORY
-// ──────────────────────────────────────────────
-
-export async function getPickupHistory(
-  limitCount: number = 50
-): Promise<PickupRecord[]> {
-  const q = query(
-    collection(db, "pickups"),
-    orderBy("pickedUpAt", "desc"),
-    limit(limitCount)
-  );
-  const snapshot = await getDocs(q);
-
-  return snapshot.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...data,
-      pickedUpAt:
-        data.pickedUpAt instanceof Timestamp
-          ? data.pickedUpAt.toDate().toISOString()
-          : data.pickedUpAt,
-    } as PickupRecord;
-  });
-}
-
-export async function getAllCodes(): Promise<UniqueCode[]> {
-  const q = query(collection(db, "codes"), orderBy("generatedAt", "desc"), limit(100));
-  const snapshot = await getDocs(q);
-
-  return snapshot.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...data,
-      generatedAt:
-        data.generatedAt instanceof Timestamp
-          ? data.generatedAt.toDate().toISOString()
-          : data.generatedAt,
-      expiresAt:
-        data.expiresAt instanceof Timestamp
-          ? data.expiresAt.toDate().toISOString()
-          : data.expiresAt,
-    } as UniqueCode;
-  });
-}
+import { TrashBin } from "@/types/pickup";
+import { generateBinCode } from "@/lib/generateCode";
 
 // ──────────────────────────────────────────────
 // BINS
 // ──────────────────────────────────────────────
 
 export async function getTrashBins(): Promise<TrashBin[]> {
-  const q = query(
-    collection(db, "bins"),
-    where("isActive", "==", true)
-  );
+  const q = query(collection(db, "bins"), where("isActive", "==", true));
   const snapshot = await getDocs(q);
 
   const bins = snapshot.docs.map((d) => ({
@@ -253,22 +32,41 @@ export async function getTrashBins(): Promise<TrashBin[]> {
         : d.data().createdAt,
   })) as TrashBin[];
 
-  // Urutkan berdasarkan lokasi secara alfabetis di sisi klien untuk menghindari kebutuhan Composite Index di Firestore
   return bins.sort((a, b) => a.location.localeCompare(b.location));
 }
 
 export async function getTrashBinById(binId: string): Promise<TrashBin | null> {
   const docSnap = await getDoc(doc(db, "bins", binId));
-  if (!docSnap.exists() || !docSnap.data().isActive) {
-    return null;
-  }
+  if (!docSnap.exists() || !docSnap.data().isActive) return null;
+  const data = docSnap.data();
   return {
     id: docSnap.id,
-    ...docSnap.data(),
+    ...data,
     createdAt:
-      docSnap.data().createdAt instanceof Timestamp
-        ? docSnap.data().createdAt.toDate().toISOString()
-        : docSnap.data().createdAt,
+      data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate().toISOString()
+        : data.createdAt,
+  } as TrashBin;
+}
+
+export async function getBinByCode(binCode: string): Promise<TrashBin | null> {
+  const q = query(
+    collection(db, "bins"),
+    where("code", "==", binCode.toUpperCase().trim()),
+    where("isActive", "==", true),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  const data = d.data();
+  return {
+    id: d.id,
+    ...data,
+    createdAt:
+      data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate().toISOString()
+        : data.createdAt,
   } as TrashBin;
 }
 
@@ -277,7 +75,10 @@ export async function addTrashBin(
   address: string,
   capacity: number
 ): Promise<TrashBin> {
+  const code = generateBinCode();
+
   const docRef = await addDoc(collection(db, "bins"), {
+    code,
     location,
     address,
     capacity,
@@ -287,6 +88,7 @@ export async function addTrashBin(
 
   return {
     id: docRef.id,
+    code,
     location,
     address,
     capacity,
@@ -300,28 +102,27 @@ export async function addTrashBin(
 // ──────────────────────────────────────────────
 
 export async function getDashboardStats() {
-  const [pickupsSnap, codesSnap, binsSnap] = await Promise.all([
-    getDocs(collection(db, "pickups")),
-    getDocs(query(collection(db, "codes"), where("status", "==", "pending"))),
+  const [attendancesSnap, usersSnap, binsSnap] = await Promise.all([
+    getDocs(collection(db, "attendances")),
+    getDocs(query(collection(db, "users"), where("isActive", "==", true))),
     getDocs(query(collection(db, "bins"), where("isActive", "==", true))),
   ]);
 
-  // Today's pickups
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayPickups = pickupsSnap.docs.filter((d) => {
+  const todayAttendances = attendancesSnap.docs.filter((d) => {
     const data = d.data();
     const t =
-      data.pickedUpAt instanceof Timestamp
-        ? data.pickedUpAt.toDate()
-        : new Date(data.pickedUpAt);
+      data.scannedAt instanceof Timestamp
+        ? data.scannedAt.toDate()
+        : new Date(data.scannedAt);
     return t >= today;
   }).length;
 
   return {
-    totalPickups: pickupsSnap.size,
-    todayPickups,
-    activeCodes: codesSnap.size,
+    totalAttendances: attendancesSnap.size,
+    todayAttendances,
+    activeOfficers: usersSnap.size,
     totalBins: binsSnap.size,
   };
 }
