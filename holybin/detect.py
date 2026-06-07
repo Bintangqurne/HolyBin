@@ -21,7 +21,9 @@ from serial_port import detect_serial_port
 # KONFIGURASI
 # ============================================================
 
-MODEL_PATH = "best.pt"
+# Pilih model lewat env HOLYBIN_MODEL (default best.pt).
+#   contoh: HOLYBIN_MODEL=best1_clean.pt python3 detect.py
+MODEL_PATH = os.getenv("HOLYBIN_MODEL", "best.pt")
 
 # Port ESP32: auto-detect (Linux /dev/ttyUSB*, Mac /dev/cu.*, Win COMx).
 # Override dengan env HOLYBIN_SERIAL_PORT=... atau "DUMMY" untuk test tanpa ESP32.
@@ -39,8 +41,10 @@ CAMERA_INDEX = int(CAMERA_DEVICE) if CAMERA_DEVICE.lstrip("-").isdigit() else CA
 
 # Mapping class YOLO -> kategori sortir
 # Nama class HARUS PERSIS sama dengan output model (case-sensitive)
-KATEGORI_PULUNG = {"PAPER", "PLASTIC", "CARDBOARD"}   # -> L (kiri)
-KATEGORI_BUANG  = {"BIODEGRADABLE", "GLASS", "METAL"} # -> R (kanan)
+# Kategori dibandingkan dalam HURUF BESAR (case-insensitive) supaya cocok untuk
+# semua model: best.pt/best1 (CARDBOARD, ...) maupun best2 (cardboard, ..., trash).
+KATEGORI_PULUNG = {"PAPER", "PLASTIC", "CARDBOARD", "GLASS", "METAL"}  # -> L (kiri)
+KATEGORI_BUANG  = {"BIODEGRADABLE", "TRASH"}                           # -> R (kanan)
 
 # Tuning
 CONF_THRESHOLD       = 0.65   # confidence minimum; turunkan kalau jarang ke-trigger
@@ -111,10 +115,11 @@ def kirim_perintah(cmd):
 
 
 def klasifikasi_kategori(nama_class):
-    """Map nama class YOLO ke 'L' (pulung) / 'R' (buang) / None"""
-    if nama_class in KATEGORI_PULUNG:
+    """Map nama class YOLO ke 'L' (pulung) / 'R' (buang) / None. Case-insensitive."""
+    nama = nama_class.upper()
+    if nama in KATEGORI_PULUNG:
         return 'L'
-    if nama_class in KATEGORI_BUANG:
+    if nama in KATEGORI_BUANG:
         return 'R'
     return None
 

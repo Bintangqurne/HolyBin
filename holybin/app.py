@@ -59,10 +59,14 @@ SERVO_URL = config.HOLYBIN_API_URL                      # mis. http://localhost:
 ATTENDANCE_URL = f"{config.API_BASE_URL}/api/attendance"
 HEADERS = {"Content-Type": "application/json", "X-Scanner-Token": config.SCANNER_TOKEN}
 
-# YOLO (deteksi sampah)
-MODEL_PATH = os.path.join(HOLYBIN_DIR, "best.pt")
-KATEGORI_PULUNG = {"PAPER", "PLASTIC", "CARDBOARD"}     # -> L (kiri)  servo 1
-KATEGORI_BUANG = {"BIODEGRADABLE", "GLASS", "METAL"}    # -> R (kanan) servo 1
+# YOLO (deteksi sampah). Pilih model lewat env HOLYBIN_MODEL (default best.pt).
+#   contoh: HOLYBIN_MODEL=best1_clean.pt python3 app.py
+_model_env = os.getenv("HOLYBIN_MODEL", "best.pt")
+MODEL_PATH = _model_env if os.path.isabs(_model_env) else os.path.join(HOLYBIN_DIR, _model_env)
+# Dibandingkan HURUF BESAR (case-insensitive) -> cocok untuk best.pt/best1
+# (CARDBOARD, ...) maupun best2 (cardboard, ..., trash).
+KATEGORI_PULUNG = {"PAPER", "PLASTIC", "CARDBOARD", "GLASS", "METAL"}  # -> L (kiri)  servo 1
+KATEGORI_BUANG = {"BIODEGRADABLE", "TRASH"}                            # -> R (kanan) servo 1
 CONF_THRESHOLD = 0.65
 DURASI_HASIL = 2.5
 
@@ -117,13 +121,20 @@ def open_camera(dev, hi_res=False):
 # ---------------------------------------------------------------------------
 # Servo via HTTP (api_server.py)
 # ---------------------------------------------------------------------------
-def buka_pintu():
-    """Mode QR: buka kunci pintu (servo 2) lewat /absen. Non-blocking."""
+def trigger_servo(role: str) -> None:
+    """Mode QR: toggle kunci kompartemen sesuai role lewat /lock/<role>. Non-blocking.
+    pemulung -> servo 2, kebersihan -> servo 3. Fire-and-forget di daemon thread."""
+    if not config.SERVO_ENABLED:
+        return
+    if role not in ("pemulung", "kebersihan"):
+        print(f"  [servo] role tidak dikenal: {role!r}, kunci tidak digerakkan.")
+        return
+
     def _send():
         try:
-            requests.post(f"{SERVO_URL}/absen", headers=HEADERS, timeout=3)
+            requests.post(f"{SERVO_URL}/lock/{role}", headers=HEADERS, timeout=3)
         except Exception as e:
-            print(f"  [servo] gagal buka pintu: {e}")
+            print(f"  [servo] gagal kirim ke holybin: {e}")
     threading.Thread(target=_send, daemon=True).start()
 
 
@@ -139,7 +150,8 @@ def sortir_servo(cmd):
 # ---------------------------------------------------------------------------
 # Absen (mode QR) — pola sama dengan scanner.py
 # ---------------------------------------------------------------------------
-def post_attendance(user_code: str, scanned_at: float | None = None):
+def post_attendance(user_code: str, scanned_at: float | None = None) -> tuple[str, str, str | None]:
+    """Return (status, message, role). role: 'pemulung' | 'kebersihan' | None."""
     payload = {"userCode": user_code, "binCode": config.BIN_CODE}
     if scanned_at:
         import datetime
@@ -148,16 +160,17 @@ def post_attendance(user_code: str, scanned_at: float | None = None):
         r = requests.post(ATTENDANCE_URL, json=payload, headers=HEADERS, timeout=6)
         data = r.json()
         if r.status_code == 200 and data.get("ok"):
+            role = data.get("userRole")
             if data.get("alreadyScanned"):
-                return "info", f"Sudah absen {data.get('minutesAgo', 0)} menit lalu  —  {data.get('userName','')}"
-            return "ok", f"Absen: {data.get('userName')}  @  {data.get('binLocation')}"
-        return "error", data.get("error", f"HTTP {r.status_code}")
+                return "info", f"Sudah absen {data.get('minutesAgo', 0)} menit lalu  —  {data.get('userName','')}", role
+            return "ok", f"Absen: {data.get('userName')}  @  {data.get('binLocation')}", role
+        return "error", data.get("error", f"HTTP {r.status_code}"), None
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         ts = scanned_at or time.time()
         offline_queue.enqueue(user_code, config.BIN_CODE, ts)
-        return "offline", f"Offline — tersimpan lokal ({offline_queue.pending_count()} antrian)"
+        return "offline", f"Offline — tersimpan lokal ({offline_queue.pending_count()} antrian)", None
     except Exception as e:
-        return "error", str(e)
+        return "error", str(e), None
 
 
 def heartbeat_worker():
@@ -174,7 +187,7 @@ def retry_worker():
     while True:
         time.sleep(30)
         for item in offline_queue.get_pending():
-            status, _ = post_attendance(item["user_code"], item["scanned_at"])
+            status, _, _ = post_attendance(item["user_code"], item["scanned_at"])
             if status in ("ok", "info"):
                 offline_queue.mark_synced(item["id"])
             else:
@@ -267,10 +280,10 @@ def process_qr(frame):
         last_seen[user_code] = now
 
         print(f"[SCAN] {user_code}  bin={config.BIN_CODE}")
-        status, msg = post_attendance(user_code)
-        print(f"  -> {status.upper()} {msg}")
-        if status == "ok":
-            buka_pintu()       # buka kunci pintu (servo 2)
+        status, msg, role = post_attendance(user_code)
+        print(f"  -> {status.upper()} {msg}  (role={role})")
+        if status in config.SERVO_TRIGGER_ON and role:
+            trigger_servo(role)   # toggle kunci pintu sesuai role
         color = {"ok": COLOR_SUCCESS, "info": COLOR_INFO,
                  "offline": COLOR_OFFLINE, "error": COLOR_ERROR}.get(status, COLOR_ERROR)
         set_feedback(msg[:65], color, 3.5)
@@ -296,7 +309,7 @@ def classify_trash(frame):
         return
 
     nama, conf = best
-    if nama in KATEGORI_PULUNG:
+    if nama.upper() in KATEGORI_PULUNG:
         sortir_servo("L")
         set_feedback(f"{nama} {conf:.2f} -> PULUNG (kiri)", COLOR_SUCCESS, DURASI_HASIL)
         sounds.play("ok")

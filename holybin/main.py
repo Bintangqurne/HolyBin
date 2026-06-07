@@ -30,14 +30,15 @@ ldr = ADC(Pin(34))
 ldr.atten(ADC.ATTN_11DB)  # range 0-3.3V
 
 # ===== Konfigurasi sudut =====
-SUDUT_KIRI   = -60
+SUDUT_KIRI   = -80
 SUDUT_TENGAH = 0
-SUDUT_KANAN  = 60
+SUDUT_KANAN  = 80
 WAKTU_TAHAN  = 1.5  # detik - servo nahan posisi sebelum balik tengah
 
-# Sudut untuk servo KUNCI (servo 2 & 3). Buka = putar 90 derajat & TAHAN (tidak auto-balik).
-SUDUT_BUKA_KUNCI  = 90   # pintu terbuka
-SUDUT_TUTUP_KUNCI = 0    # pintu terkunci (posisi tengah)
+# Sudut untuk servo KUNCI (buka = TAHAN, tidak auto-balik). Bisa beda per pintu.
+SUDUT_BUKA_PEMULUNG   = 60   # servo 2 (pemulung): pintu terbuka 60 derajat
+SUDUT_BUKA_KEBERSIHAN = 90   # servo 3 (kebersihan): pintu terbuka 90 derajat
+SUDUT_TUTUP_KUNCI     = 0    # pintu terkunci (posisi tengah)
 
 
 def putar_servo(derajat_custom, s=None):
@@ -72,13 +73,13 @@ def sortir(arah, s=None):
         putar_servo(SUDUT_TENGAH, s)
 
 
-def kunci(s, buka):
-    """Servo kunci pintu: buka (putar 90) atau tutup (balik 0), lalu TAHAN posisi.
+def kunci(s, buka, sudut_buka=90):
+    """Servo kunci pintu: buka (putar ke sudut_buka) atau tutup (balik 0), lalu TAHAN.
     Beda dari sortir() yang otomatis balik tengah — kunci harus tetap di posisinya
     sampai perintah berikutnya (check-in / check-out)."""
     if buka:
-        print(">> BUKA kunci (tahan 90)")
-        putar_servo(SUDUT_BUKA_KUNCI, s)
+        print(">> BUKA kunci (tahan", sudut_buka, ")")
+        putar_servo(sudut_buka, s)
     else:
         print(">> TUTUP kunci (tahan 0)")
         putar_servo(SUDUT_TUTUP_KUNCI, s)
@@ -95,12 +96,12 @@ def proses_perintah(cmd):
         sortir('C', servo)
     # Servo 2 (pin 32) — KUNCI pemulung (buka/tutup, tahan posisi)
     elif cmd == '2O':
-        kunci(servo2, True)
+        kunci(servo2, True, SUDUT_BUKA_PEMULUNG)
     elif cmd == '2C':
         kunci(servo2, False)
     # Servo 3 (pin 27) — KUNCI kebersihan (buka/tutup, tahan posisi)
     elif cmd == '3O':
-        kunci(servo3, True)
+        kunci(servo3, True, SUDUT_BUKA_KEBERSIHAN)
     elif cmd == '3C':
         kunci(servo3, False)
     elif cmd == 'P':
